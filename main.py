@@ -7,6 +7,17 @@ import hashlib
 import torch
 import logging
 import datetime
+import numpy as np
+import classifier
+
+FIRST_N_PKTS = 8
+FIRST_N_BYTES = 80
+BENIGN_IDX = 10
+
+PKT_CLASSIFIER = classifier.CNN_RNN()
+PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
+PKT_CLASSIFIER.eval()
+
 
 def get_key(pkt):
     key = ''
@@ -68,15 +79,50 @@ def get_key(pkt):
     
     return key
 
+def pkt2nparr(flow):
+    pkt_content = []
+
+    for nth_pkt in range(min(len(flow)), FIRST_N_PKTS):
+        idx = 0
+        # print(type(flow[nth_pkt]))
+        for pkt_val in flow[nth_pkt]:
+            if idx == 80:
+                break
+            pkt_content.append(pkt_val)
+            # print(pkt_val, end=' ')
+            idx += 1
+        if idx < 80:
+            while idx != 80:
+                pkt_content.append(0)
+                idx += 1
+
+        if nth_pkt == (len(flow) - 1) and nth_pkt < FIRST_N_PKTS-1:
+            while nth_pkt != FIRST_N_PKTS-1:
+                for _ in range(FIRST_N_BYTES):
+                    pkt_content.append(0)
+                nth_pkt += 1
+    # for end
+
+    pkt2np = np.array(pkt_content).reshape(1, 8, 80)
+    
+    return pkt2np
+
 def classify_pkt(flow, key):
     print("key now: " + str(key))
+    dealt_flow = pkt2nparr(flow)
 
-    log_filename = datetime.datetime.now().strftime("%Y-%m-%d_%H_%M_%S.log")
-    logging.basicConfig(level=logging.INFO, filename=log_filename, filemode='w',
-	                    format='[%(asctime)s] %(message)s',
-	                    datefmt='%Y%m%d %H:%M:%S',
-    )
-    logging.warning(key)
+    flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
+    output = PKT_CLASSIFIER(flow2tensor)
+    _, predicted = torch.max(output, 1)
+    print(output)
+    print(predicted)
+    
+    # log_filename = datetime.datetime.now().strftime("%Y-%m-%d_%H_%M_%S.log")
+    # logging.basicConfig(level=logging.INFO, filename=log_filename, filemode='w',
+	#                     format='[%(asctime)s] %(message)s',
+	#                     datefmt='%Y%m%d %H:%M:%S',
+    # )
+    # logging.warning(key)
 
 def generate_proc(flow, key):
     p = mp.Process(target=classify_pkt, args=(flow, key, ))
@@ -88,7 +134,6 @@ def hash_key(key, proc_create_amt):
     return new_key
 
 if __name__ == "__main__":
-    # start to classify the incoming packets
     # open a socket
     try:
         s = socket.socket( socket.AF_PACKET , socket.SOCK_RAW , socket.ntohs( 0x0003 ) )
@@ -102,7 +147,7 @@ if __name__ == "__main__":
     
     recv_pkt_amt = 0
     while True:
-        if recv_pkt_amt == 5:
+        if recv_pkt_amt == 50:
             break
 
         key = ''
@@ -111,15 +156,14 @@ if __name__ == "__main__":
         pkt = packet[0]
 
         key = get_key(pkt)
-        # hashed_key = hash_key(key, proc_create_amt)
-        # print("key: " + key)
 
+        # breakpoint()
         if len( key ) != 0 and flows.get( key ) == None:
-            flows[key] = [ packet ]
+            flows[key] = [ pkt ]
             timers[key] = Timer(1.0, generate_proc, (flows[key], key))
             timers[key].start()
         else:
-            flows[key].append( packet )
+            flows[key].append( pkt )
             timers[key].cancel()
 
             if len( flows[key] ) == 8:
@@ -130,4 +174,3 @@ if __name__ == "__main__":
                 timers[key].start()
     
         recv_pkt_amt += 1
-
