@@ -4,7 +4,7 @@ from threading import Timer
 import os
 import multiprocessing as mp
 import hashlib
-# import torch
+import torch
 import logging
 import datetime
 
