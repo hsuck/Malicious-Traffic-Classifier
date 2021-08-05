@@ -16,6 +16,7 @@ BENIGN_IDX = 10
 
 PKT_CLASSIFIER = classifier.CNN_RNN()
 PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
+PKT_CLASSIFIER.eval()
 
 
 def get_key(pkt):
@@ -81,7 +82,7 @@ def get_key(pkt):
 def pkt2nparr(flow):
     pkt_content = []
 
-    for nth_pkt in range(len(flow)):
+    for nth_pkt in range(min(len(flow)), FIRST_N_PKTS):
         idx = 0
         # print(type(flow[nth_pkt]))
         for pkt_val in flow[nth_pkt]:
