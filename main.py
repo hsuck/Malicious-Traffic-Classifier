@@ -4,13 +4,12 @@ from threading import Timer
 import os
 import multiprocessing as mp
 import hashlib
-# import torch
+import torch
 import logging
 import datetime
-# import numpy as np
-import time
+import numpy as np
 import classifier
-
+import time
 
 FIRST_N_PKTS = 8
 FIRST_N_BYTES = 80
@@ -20,6 +19,9 @@ PKT_CLASSIFIER = classifier.CNN_RNN()
 PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
 PKT_CLASSIFIER.eval()
 
+# classify_times = 0
+# time_consuming_amt = 0
+proc_list = []
 
 def get_key(pkt):
     key = ''
@@ -28,7 +30,6 @@ def get_key(pkt):
     eth_header = pkt[: eth_length]
     eth = unpack( '!6s6sH' , eth_header )
     eth_protocol = socket.ntohs( eth[2] )
-    # print( ' Protocol : ' + str( eth_protocol ) )
 
     # Parse IP packets, IP Protocol number = 8
     if eth_protocol == 8:
@@ -45,6 +46,15 @@ def get_key(pkt):
 
         protocol = iph[6]
         s_addr = socket.inet_ntoa( iph[8] )
+
+        ###
+
+        # if s_addr != "162.222.213.28":
+        #     key += "---"
+        #     return key
+
+        ###
+
         d_addr = socket.inet_ntoa( iph[9] )
 
         key += "s_addr " + str( s_addr ) + " d_addr " + str( d_addr ) + ' '
@@ -79,6 +89,13 @@ def get_key(pkt):
         else :
             print( 'Protocol other than TCP/UDP/ICMP' )
     
+    ###
+
+    # if key == '':
+    #     return "---"
+
+    ###
+
     return key
 
 def pkt2nparr(flow):
@@ -86,12 +103,10 @@ def pkt2nparr(flow):
 
     for nth_pkt in range(min(len(flow), FIRST_N_PKTS)):
         idx = 0
-        # print(type(flow[nth_pkt]))
         for pkt_val in flow[nth_pkt]:
             if idx == 80:
                 break
             pkt_content.append(pkt_val)
-            # print(pkt_val, end=' ')
             idx += 1
         if idx < 80:
             while idx != 80:
@@ -110,13 +125,19 @@ def pkt2nparr(flow):
     return pkt2np
 
 def classify_pkt(flow, key):
-    print("key now: " + str(key))
+    print("126-key now: " + str(key))
+
+    t_start = time.perf_counter()
     dealt_flow = pkt2nparr(flow)
 
     flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
     output = PKT_CLASSIFIER(flow2tensor)
     _, predicted = torch.max(output, 1)
-    print(output)
+
+    t_end = time.perf_counter()
+    print("\nTime consuming: ", end='')
+    print(t_end - t_start, end="\n\n")
+
     print(predicted)
     
     # log_filename = datetime.datetime.now().strftime("%Y-%m-%d_%H_%M_%S.log")
@@ -127,8 +148,16 @@ def classify_pkt(flow, key):
     # logging.warning(key)
 
 def generate_proc(flow, key):
-    p = mp.Process(target=classify_pkt, args=(flow, key, ))
+    p = mp.Process(target=classify_pkt, args=(flow, key, ), daemon=True)
+    
+    # global classify_times
+    # classify_times += 1
+
+    # global proc_list
+    # proc_list.append(p)
+    
     p.start()
+    # p.join()
 
 def hash_key(key, proc_create_amt):
     new_key = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16) % proc_create_amt
@@ -152,21 +181,27 @@ if __name__ == "__main__":
         if recv_pkt_amt == 50:
             break
 
-        key = ''
-
         packet = s.recvfrom( 65565 )
-
-        start = time.time()
         pkt = packet[0]
 
         key = get_key(pkt)
+        
+        ###
 
-        # breakpoint()
+        # if key == "---" or key == '':
+        #     recv_pkt_amt += 1
+        #     continue
+        
+        # print("170-key: " + key)
+
+        ###
+
         if len( key ) != 0 and flows.get( key ) == None:
             flows[key] = [ pkt ]
             timers[key] = Timer(1.0, generate_proc, (flows[key], key))
             timers[key].start()
         else:
+            # print("178-key: " + key)
             flows[key].append( pkt )
             timers[key].cancel()
 
@@ -176,9 +211,18 @@ if __name__ == "__main__":
             else:
                 timers[key] = Timer( 1.0, generate_proc, (flows[key], key) )
                 timers[key].start()
-
-        end = time.time()
-
-        print( "Time interval" + ( end - start ) )
     
+        # delete the finished process
+        # proc_list = [proc for proc in proc_list if proc.is_alive()]
+
         recv_pkt_amt += 1
+
+    # while len(proc_list) > 0:
+    #     # proc_list = [proc for proc in proc_list if proc.is_alive()]
+    #     for proc in proc_list:
+    #         if proc.is_alive():
+    #             print("Processes alive:" + proc.name)
+    #     print("proc_list:", end=" ")
+    #     print(proc_list)
+
+    #     time.sleep(1)
