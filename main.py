@@ -4,11 +4,13 @@ from threading import Timer
 import os
 import multiprocessing as mp
 import hashlib
-import torch
+# import torch
 import logging
 import datetime
-import numpy as np
+# import numpy as np
+import time
 import classifier
+
 
 FIRST_N_PKTS = 8
 FIRST_N_BYTES = 80
@@ -153,6 +155,8 @@ if __name__ == "__main__":
         key = ''
 
         packet = s.recvfrom( 65565 )
+
+        start = time.time()
         pkt = packet[0]
 
         key = get_key(pkt)
@@ -172,5 +176,9 @@ if __name__ == "__main__":
             else:
                 timers[key] = Timer( 1.0, generate_proc, (flows[key], key) )
                 timers[key].start()
+
+        end = time.time()
+
+        print( "Time interval" + ( end - start ) )
     
         recv_pkt_amt += 1
