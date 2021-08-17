@@ -58,6 +58,36 @@ def get_key(pkt):
         d_addr = socket.inet_ntoa( iph[9] )
 
         key += "s_addr " + str( s_addr ) + " d_addr " + str( d_addr ) + ' '
+
+        def getflags( packet ):
+            Flag_URG = {1: "URG-Urgent flag)"}
+            Flag_ACK = {1: "ACK-Acknowledgment flag"}
+            Flag_PSH = {1: "PSH-Push flag"}
+            Flag_RST = {1: "RST-Reset flag"}
+            Flag_SYN = {1: "SYN-Synchronize flag"}
+            Flag_FIN = {1: "FIN-End of data flag"}
+
+            URG = packet & 0x020
+            URG >>= 5
+            ACK = packet & 0x010
+            ACK >>= 4
+            PSH = packet & 0x008
+            PSH >>= 3
+            RST = packet & 0x004
+            RST >>= 2
+            SYN = packet & 0x002
+            SYN >>= 1
+            FIN = packet & 0x001
+            FIN >>= 0
+
+            Flags = Flag_URG[URG] + "\n" + \
+                    Flag_ACK[ACK] + "\n" + \
+                    Flag_PSH[PSH] + "\n" + \
+                    Flag_RST[RST] + "\n" + \
+                    Flag_SYN[SYN] + "\n" + \
+                    Flag_FIN[FIN]
+
+            return Flags
         
         # TCP protocol
         if protocol == 6:
@@ -71,6 +101,8 @@ def get_key(pkt):
             dest_port = tcph[1]
 
             key += str( source_port ) + ' ' + str( dest_port )
+
+            print( "flag: ", getflags( tcph[3] ) )
 
         # UDP packets
         elif protocol == 17 :
