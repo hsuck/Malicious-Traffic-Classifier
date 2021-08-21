@@ -124,21 +124,42 @@ def pkt2nparr(flow):
 
     for nth_pkt in range(min(len(flow), FIRST_N_PKTS)):
         idx = 0
+
+        # get info of packet reading now
         for pkt_val in flow[nth_pkt]:
             if idx == 80:
+                ###
+                # print()
+                ###
                 break
             pkt_content.append(pkt_val)
+            ###
+            # print(pkt_val, end=' ')
+            ###
             idx += 1
+        
+        # if idx less than 80 after reading packet, then fill it with 0
         if idx < 80:
             while idx != 80:
                 pkt_content.append(0)
+                ###
+                # print('0', end=' ')
+                ###
                 idx += 1
 
+        # if nth_pkt is less than 8, then fill it with 0 too
         if nth_pkt == (len(flow) - 1) and nth_pkt < FIRST_N_PKTS-1:
             while nth_pkt != FIRST_N_PKTS-1:
                 for _ in range(FIRST_N_BYTES):
                     pkt_content.append(0)
+                    ###
+                    # print('0', end=' ')
+                    ###
                 nth_pkt += 1
+                ###
+        #         print()
+        # print()
+        ###
     # for end
 
     pkt2np = np.array(pkt_content).reshape(1, 8, 80)
@@ -146,25 +167,41 @@ def pkt2nparr(flow):
     return pkt2np
 
 def classify_pkt(flow, key):
+
+    ###
+    # t_start = time.process_time_ns()
+    ###
     dealt_flow = pkt2nparr(flow)
 
     flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
     output = PKT_CLASSIFIER(flow2tensor)
     _, predicted = torch.max(output, 1)
-    
-    print(f"\npredicted: {predicted}\n")
 
-    
-    log_filename = datetime.datetime.now().strftime(f"%Y-%m-%d_%H_%M_%S__{key}.log")
-    logging.basicConfig(level=logging.INFO, filename="./log_file/" + log_filename, filemode='w',
-	                    format='[%(asctime)s] %(message)s',
-	                    datefmt='%Y%m%d %H:%M:%S',
-    )
-    logging.warning(key)
+    # t_end = time.process_time_ns()
+    # t_consume = t_end - t_start
+    # log_filename = str(t_consume/1000)
+    # logging.basicConfig(level=logging.INFO, filename="./time_dir/" + log_filename, filemode='w',
+    #                     format='[%(asctime)s] %(message)s',
+    #                     datefmt='%Y%m%d %H:%M:%S',
+    # )
+    # logging.warning(t_consume)
+
+    # class 10 represents the benign flow
+    if predicted[0] != 10:
+        log_filename = datetime.datetime.now().strftime(f"%Y-%m-%d_%H_%M_%S__{key}.log")
+        logging.basicConfig(level=logging.INFO, filename="./log_file/" + log_filename, filemode='w',
+                            format='[%(asctime)s] %(message)s',
+                            datefmt='%Y%m%d %H:%M:%S',
+        )
+        logging.warning(key)
+    else:
+        print(f"\n\npredicted: {predicted}\n\n")
 
 def generate_proc(flow, key):
     p = mp.Process(target=classify_pkt, args=(flow, key, ), daemon=True)
     p.start()
+
+    flow.clear()
 
 # def hash_key(key, proc_create_amt):
 #     new_key = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16) % proc_create_amt
@@ -179,6 +216,9 @@ if __name__ == "__main__":
         print( e )
         sys.exit()
 
+    # mkdir for log time consumimg
+    Path("./time_dir").mkdir(parents=True, exist_ok=True)
+
     # create the log file directory if path is not exist
     Path("./log_file").mkdir(parents=True, exist_ok=True)
     f = open( 'packets1000.txt', 'w' )
@@ -186,10 +226,12 @@ if __name__ == "__main__":
     timers = {}
     
     recv_pkt_amt = 0
-    start1 = time.process_time_ns()
-
+    ###
+    # t_key = 0
+    # t_while_s = time.process_time()
+    ###
     while True:
-        if recv_pkt_amt >= 1000:
+        if recv_pkt_amt >= 5000:
             break
 
         start2 = time.process_time_ns()
@@ -197,7 +239,15 @@ if __name__ == "__main__":
         packet = s.recvfrom( 65565 )
         pkt = packet[0]
         # (key, check_protocol, FIN_flg) = get_key(pkt)
+
+        ###
+        # t_key_s = time.process_time()
+        # ###
         key = get_key(pkt)
+        # ###
+        # t_key_e = time.process_time()
+        # t_key += (t_key_e - t_key_s)
+        ###
 
         recv_pkt_amt += 1
 
@@ -213,14 +263,21 @@ if __name__ == "__main__":
             if len( flows[key] ) == 8:
                 # do classification
                 generate_proc(flows[key], key)
-            elif len(flows[key]) > 8:
-                # if FIN_flg == 1:
-                #     del flows[key]
-                continue
+            # elif len(flows[key]) > 8:
+            #     if FIN_flg == 1:
+            #         del flows[key]
+            #     continue
             else:
                 flows[key].append( pkt )
                 timers[key] = Timer( 1.0, generate_proc, (flows[key], key) )
                 timers[key].start()
+    ###
+    # t_while_e = time.process_time()
+    # print("****************")
+    # print(f"average get key time: {(t_key / recv_pkt_amt) * 1000}")
+    # print((t_while_e - t_while_s)*1000, end="\n****************\n")
+    ###
+
 
         end2 = time.process_time_ns()
         print( "Time consuming: ", ( end2 - start2 ) / 1000, "microseconds" )
