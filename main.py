@@ -12,6 +12,7 @@ from struct import *
 from threading import Timer
 import multiprocessing as mp
 from pathlib import Path
+import grp, pwd
 
 FIRST_N_PKTS = 8
 FIRST_N_BYTES = 80
@@ -148,22 +149,17 @@ def pkt2nparr(flow):
 def classify_pkt(flow, key):
 
     ###
-    # t_start = time.process_time_ns()
+    t_start = time.process_time()
     ###
     dealt_flow = pkt2nparr(flow)
 
     flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
     output = PKT_CLASSIFIER(flow2tensor)
     _, predicted = torch.max(output, 1)
-
-    # t_end = time.process_time_ns()
-    # t_consume = t_end - t_start
-    # log_filename = str(t_consume/1000)
-    # logging.basicConfig(level=logging.INFO, filename="./time_dir/" + log_filename, filemode='w',
-    #                     format='[%(asctime)s] %(message)s',
-    #                     datefmt='%Y%m%d %H:%M:%S',
-    # )
-    # logging.warning(t_consume)
+    # uid = pwd.getpwnam("user").pw_uid
+    # gid = grp.getgrnam("user").gr_gid
+    # os.chown("./log_file", uid, gid)
+    # os.chown("./time_dir", uid, gid)
 
     # class 10 represents the benign flow
     if predicted[0] != 10:
@@ -173,8 +169,17 @@ def classify_pkt(flow, key):
                             datefmt='%Y%m%d %H:%M:%S',
         )
         logging.warning(key)
-    else:
-        print(f"\n\npredicted: {predicted}\n\n")
+    
+    t_end = time.process_time()
+    t_consume = t_end - t_start
+
+    print(f"\n******\nt_consume: {t_consume}\n******\n")
+    _log_filename = str(t_consume*1000)
+    logging.basicConfig(level=logging.INFO, filename="./time_dir/" + _log_filename, filemode='w',
+                        format='[%(asctime)s] %(message)s',
+                        datefmt='%Y%m%d %H:%M:%S',
+    )
+    logging.warning(t_consume)
 
 def generate_proc(flow, key):
     p = mp.Process(target=classify_pkt, args=(flow, key, ), daemon=True)
@@ -190,11 +195,13 @@ if __name__ == "__main__":
         print( e )
         sys.exit()
 
+    
     # mkdir for log time consumimg
     Path("./time_dir").mkdir(parents=True, exist_ok=True)
-
+    
     # create the log file directory if path is not exist
     Path("./log_file").mkdir(parents=True, exist_ok=True)
+
 
     flows = {}
     timers = {}
@@ -202,11 +209,11 @@ if __name__ == "__main__":
 
     ###
     # t_key = 0
-    t_proc = 0
-    t_while_s = time.process_time()
+    # t_proc = 0
+    # t_while_s = time.process_time()
     ###
     while True:
-        if recv_pkt_amt >= 5000:
+        if recv_pkt_amt >= 100:
             break
         
         packet = s.recvfrom( 65565 )
@@ -232,19 +239,19 @@ if __name__ == "__main__":
 
             if len( flows[key] ) == 8:
                 # do classification
-                t_proc_s = time.process_time()
+                # t_proc_s = time.process_time()
                 generate_proc(flows[key], key)
-                t_proc_e = time.process_time()
-                t_proc += ( t_proc_e - t_proc_s )
+                # t_proc_e = time.process_time()
+                # t_proc += ( t_proc_e - t_proc_s )
             else:
                 flows[key].append( pkt )
                 timers[key] = Timer( 1.0, generate_proc, (flows[key], key) )
                 timers[key].start()
 
     ###
-    t_while_e = time.process_time()
-    print("****************")
+    # t_while_e = time.process_time()
+    # print("****************")
     # print(f"average get key time: {(t_key / recv_pkt_amt) * 1000}")
-    print( f"Average open process time: { ( t_proc / recv_pkt_amt ) * 1000 }" )
-    print((t_while_e - t_while_s)*1000, end="\n****************\n")
+    # print( f"Average open process time: { ( t_proc / recv_pkt_amt ) * 1000 }" )
+    # print((t_while_e - t_while_s)*1000, end="\n****************\n")
     ###
