@@ -78,7 +78,7 @@ def get_key(pkt):
 
             source_port = tcph[0]
             dest_port = tcph[1]
-            FIN_FLG = getflags(tcph[5])
+            # FIN_FLG = getflags(tcph[5])
 
             key += "s_port " + str( source_port ) + " d_port " + str( dest_port )
 
@@ -181,14 +181,19 @@ if __name__ == "__main__":
 
     # create the log file directory if path is not exist
     Path("./log_file").mkdir(parents=True, exist_ok=True)
+    f = open( 'packets1000.txt', 'w' )
     flows = {}
     timers = {}
     
     recv_pkt_amt = 0
+    start1 = time.process_time_ns()
+
     while True:
-        if recv_pkt_amt >= 50:
+        if recv_pkt_amt >= 1000:
             break
 
+        start2 = time.process_time_ns()
+        
         packet = s.recvfrom( 65565 )
         pkt = packet[0]
         # (key, check_protocol, FIN_flg) = get_key(pkt)
@@ -217,4 +222,11 @@ if __name__ == "__main__":
                 timers[key] = Timer( 1.0, generate_proc, (flows[key], key) )
                 timers[key].start()
 
-    time.sleep(1)
+        end2 = time.process_time_ns()
+        print( "Time consuming: ", ( end2 - start2 ) / 1000, "microseconds" )
+        f.write( str( ( end2 - start2 ) / 1000 ) + '\n' )
+
+    end1 = time.process_time_ns()
+    print( "Total time consuming: ", ( end1 - start1 ) / 1000, 'microseconds' )
+    f.close()
+    # time.sleep(1)
