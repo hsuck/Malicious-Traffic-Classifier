@@ -175,6 +175,8 @@ def classify_pkt(flow, key):
 
     print(f"\n******\nt_consume: {t_consume}\n******\n")
     _log_filename = str(t_consume*1000)
+    
+    logging.getLogger('').handlers = []
     logging.basicConfig(level=logging.INFO, filename="./time_dir/" + _log_filename, filemode='w',
                         format='[%(asctime)s] %(message)s',
                         datefmt='%Y%m%d %H:%M:%S',
