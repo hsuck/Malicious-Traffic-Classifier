@@ -202,7 +202,8 @@ if __name__ == "__main__":
 
     ###
     # t_key = 0
-    # t_while_s = time.process_time()
+    t_proc = 0
+    t_while_s = time.process_time()
     ###
     while True:
         if recv_pkt_amt >= 5000:
@@ -226,20 +227,24 @@ if __name__ == "__main__":
             flows[key] = [ pkt ]
             timers[key] = Timer(1.0, generate_proc, (flows[key], key))
             timers[key].start()
-        else:
+        elif len( key ) != 0:
             timers[key].cancel()
 
             if len( flows[key] ) == 8:
                 # do classification
+                t_proc_s = time.process_time()
                 generate_proc(flows[key], key)
+                t_proc_e = time.process_time()
+                t_proc += ( t_proc_e - t_proc_s )
             else:
                 flows[key].append( pkt )
                 timers[key] = Timer( 1.0, generate_proc, (flows[key], key) )
                 timers[key].start()
 
     ###
-    # t_while_e = time.process_time()
-    # print("****************")
+    t_while_e = time.process_time()
+    print("****************")
     # print(f"average get key time: {(t_key / recv_pkt_amt) * 1000}")
-    # print((t_while_e - t_while_s)*1000, end="\n****************\n")
+    print( f"Average open process time: { ( t_proc / recv_pkt_amt ) * 1000 }" )
+    print((t_while_e - t_while_s)*1000, end="\n****************\n")
     ###
