@@ -39,7 +39,6 @@ PKT_CLASSIFIER.eval()
     
 def get_key(pkt):
     key = ''
-    # is_tcp_udp = False
 
     eth_length = 14
     eth_header = pkt[: eth_length]
@@ -68,8 +67,6 @@ def get_key(pkt):
         
         # TCP protocol
         if protocol == 6:
-            # check_protocol = True
-
             t = iph_length + eth_length
             tcp_header = pkt[t: t+20]
             
@@ -78,7 +75,6 @@ def get_key(pkt):
 
             source_port = tcph[0]
             dest_port = tcph[1]
-            # FIN_FLG = getflags(tcph[5])
 
             key += "s_port " + str( source_port ) + " d_port " + str( dest_port )
 
@@ -99,8 +95,6 @@ def get_key(pkt):
         
         # UDP packets
         elif protocol == 17 :
-            # check_protocol = True
-
             u = iph_length + eth_length
             udp_header = pkt[u:u+8]
 
@@ -116,7 +110,6 @@ def get_key(pkt):
         # else :
         #     print( 'Protocol other than TCP/UDP/ICMP' )
 
-    # return key, check_protocol, FIN_flg
     return key
 
 def pkt2nparr(flow):
@@ -128,23 +121,15 @@ def pkt2nparr(flow):
         # get info of packet reading now
         for pkt_val in flow[nth_pkt]:
             if idx == 80:
-                ###
-                # print()
-                ###
                 break
+            
             pkt_content.append(pkt_val)
-            ###
-            # print(pkt_val, end=' ')
-            ###
             idx += 1
         
         # if idx less than 80 after reading packet, then fill it with 0
         if idx < 80:
             while idx != 80:
                 pkt_content.append(0)
-                ###
-                # print('0', end=' ')
-                ###
                 idx += 1
 
         # if nth_pkt is less than 8, then fill it with 0 too
@@ -152,14 +137,8 @@ def pkt2nparr(flow):
             while nth_pkt != FIRST_N_PKTS-1:
                 for _ in range(FIRST_N_BYTES):
                     pkt_content.append(0)
-                    ###
-                    # print('0', end=' ')
-                    ###
+
                 nth_pkt += 1
-                ###
-        #         print()
-        # print()
-        ###
     # for end
 
     pkt2np = np.array(pkt_content).reshape(1, 8, 80)
@@ -203,11 +182,6 @@ def generate_proc(flow, key):
 
     flow.clear()
 
-# def hash_key(key, proc_create_amt):
-#     new_key = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16) % proc_create_amt
-    
-#     return new_key
-
 if __name__ == "__main__":
     # open a socket
     try:
@@ -221,11 +195,11 @@ if __name__ == "__main__":
 
     # create the log file directory if path is not exist
     Path("./log_file").mkdir(parents=True, exist_ok=True)
-    f = open( 'packets1000.txt', 'w' )
+
     flows = {}
     timers = {}
-    
     recv_pkt_amt = 0
+
     ###
     # t_key = 0
     # t_while_s = time.process_time()
@@ -233,26 +207,21 @@ if __name__ == "__main__":
     while True:
         if recv_pkt_amt >= 5000:
             break
-
-        start2 = time.process_time_ns()
         
         packet = s.recvfrom( 65565 )
         pkt = packet[0]
-        # (key, check_protocol, FIN_flg) = get_key(pkt)
 
         ###
         # t_key_s = time.process_time()
-        # ###
+        ###
         key = get_key(pkt)
-        # ###
+        ###
         # t_key_e = time.process_time()
         # t_key += (t_key_e - t_key_s)
         ###
 
         recv_pkt_amt += 1
 
-        # if check_protocol == False:
-        #     continue
         if len( key ) != 0 and flows.get( key ) == None:
             flows[key] = [ pkt ]
             timers[key] = Timer(1.0, generate_proc, (flows[key], key))
@@ -263,27 +232,14 @@ if __name__ == "__main__":
             if len( flows[key] ) == 8:
                 # do classification
                 generate_proc(flows[key], key)
-            # elif len(flows[key]) > 8:
-            #     if FIN_flg == 1:
-            #         del flows[key]
-            #     continue
             else:
                 flows[key].append( pkt )
                 timers[key] = Timer( 1.0, generate_proc, (flows[key], key) )
                 timers[key].start()
+
     ###
     # t_while_e = time.process_time()
     # print("****************")
     # print(f"average get key time: {(t_key / recv_pkt_amt) * 1000}")
     # print((t_while_e - t_while_s)*1000, end="\n****************\n")
     ###
-
-
-        end2 = time.process_time_ns()
-        print( "Time consuming: ", ( end2 - start2 ) / 1000, "microseconds" )
-        f.write( str( ( end2 - start2 ) / 1000 ) + '\n' )
-
-    end1 = time.process_time_ns()
-    print( "Total time consuming: ", ( end1 - start1 ) / 1000, 'microseconds' )
-    f.close()
-    # time.sleep(1)
