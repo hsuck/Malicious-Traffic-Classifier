@@ -13,6 +13,8 @@ from threading import Timer
 import multiprocessing as mp
 from pathlib import Path
 import grp, pwd
+import json
+
 
 FIRST_N_PKTS = 8
 FIRST_N_BYTES = 80
@@ -21,6 +23,8 @@ BENIGN_IDX = 10
 PKT_CLASSIFIER = classifier.CNN_RNN()
 PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
 PKT_CLASSIFIER.eval()
+
+Lock = mp.Lock()
 
 # def getflags( packet ):
 #     # URG = packet & 0x020
@@ -37,6 +41,24 @@ PKT_CLASSIFIER.eval()
 #     FIN >>= 0
 
 #     return FIN
+
+class JsonFilter(logging.Filter):
+ s_addr = 's_addr'
+ d_addr = 'd_addr'
+ s_port = 's_port'
+ d_port = 'd_port'
+ c = 'class'
+ num_pkts = 'num_pkts'
+
+ def filter( self, record ):
+  record.s_addr = self.s_addr
+  record.d_addr = self.d_addr
+  record.s_port = self.s_port
+  record.d_port = self.d_port
+  record.c = self.c
+  record.num_pkts = self.num_pkts
+  return True
+
     
 def get_key(pkt):
     key = ''
@@ -64,7 +86,7 @@ def get_key(pkt):
 
         d_addr = socket.inet_ntoa( iph[9] )
 
-        key += "s_addr " + str( s_addr ) + " d_addr " + str( d_addr ) + ' '
+        key += "s_addr " + str( s_addr ) + " d_addr " + str( d_addr )
         
         # TCP protocol
         if protocol == 6:
@@ -77,7 +99,7 @@ def get_key(pkt):
             source_port = tcph[0]
             dest_port = tcph[1]
 
-            key += "s_port " + str( source_port ) + " d_port " + str( dest_port )
+            key += " s_port " + str( source_port ) + " d_port " + str( dest_port )
 
         #ICMP Packets
         # elif protocol == 1:
@@ -105,7 +127,7 @@ def get_key(pkt):
             source_port = udph[0]
             dest_port = udph[1]
 
-            key += "s_port " + str( source_port ) + " d_port " + str( dest_port )
+            key += " s_port " + str( source_port ) + " d_port " + str( dest_port )
 
         #some other IP packet like IGMP
         # else :
@@ -146,7 +168,7 @@ def pkt2nparr(flow):
     
     return pkt2np
 
-def classify_pkt(flow, key):
+def classify_pkt(flow, key, lock):
 
     ###
     t_start = time.process_time()
@@ -162,29 +184,38 @@ def classify_pkt(flow, key):
     # os.chown("./time_dir", uid, gid)
 
     # class 10 represents the benign flow
-    if predicted[0] != 10:
-        log_filename = datetime.datetime.now().strftime(f"%Y-%m-%d_%H_%M_%S__{key}.log")
-        logging.basicConfig(level=logging.INFO, filename="./log_file/" + log_filename, filemode='w',
-                            format='[%(asctime)s] %(message)s',
-                            datefmt='%Y%m%d %H:%M:%S',
-        )
-        logging.warning(key)
+    # if predicted[0] != 10:
+    lock.acquire()
+
+    logger = logging.getLogger()
+    filter_ = JsonFilter()
+    logger.addFilter( filter_ )
+    inf = key.split(' ')
+    filter_.s_addr = inf[1]
+    filter_.d_addr = inf[3]
+    filter_.s_port = inf[5]
+    filter_.d_port = inf[7]
+    filter_.c = str( predicted[0] )
+    filter_.num_pkts = len( flow )
+    logger.info( key )
+
+    lock.release()
     
     t_end = time.process_time()
     t_consume = t_end - t_start
 
     print(f"\n******\nt_consume: {t_consume}\n******\n")
-    _log_filename = str(t_consume*1000)
+    # _log_filename = str(t_consume*1000)
     
-    logging.getLogger('').handlers = []
-    logging.basicConfig(level=logging.INFO, filename="./time_dir/" + _log_filename, filemode='w',
-                        format='[%(asctime)s] %(message)s',
-                        datefmt='%Y%m%d %H:%M:%S',
-    )
-    logging.warning(t_consume)
+    # logging.getLogger('').handlers = []
+    # logging.basicConfig(level=logging.INFO, filename="./time_dir/" + _log_filename, filemode='w',
+    #                     format='[%(asctime)s] %(message)s',
+    #                     datefmt='%Y%m%d %H:%M:%S',
+    # )
+    # logging.warning(t_consume)
 
-def generate_proc(flow, key):
-    p = mp.Process(target=classify_pkt, args=(flow, key, ), daemon=True)
+def generate_proc(flow, key, lock):
+    p = mp.Process(target=classify_pkt, args=(flow, key, lock, ), daemon=True)
     p.start()
 
     flow.clear()
@@ -199,11 +230,23 @@ if __name__ == "__main__":
 
     
     # mkdir for log time consumimg
-    Path("./time_dir").mkdir(parents=True, exist_ok=True)
+    # Path("./time_dir").mkdir(parents=True, exist_ok=True)
     
     # create the log file directory if path is not exist
     Path("./log_file").mkdir(parents=True, exist_ok=True)
-
+    log_filename = datetime.datetime.now().strftime(f"%Y-%m-%d.log")
+    formate = json.dumps({"timestamp": "%(asctime)s.%(msecs)03d",
+                          "source address": "%(s_addr)s",
+                          "destination address": "%(d_addr)s",
+                          "source port": "%(s_port)s",
+                          "destination port": "%(d_port)s",
+                          "class": "%(c)s",
+                          "number of packets": "%(num_pkts)s"
+    })
+    logging.basicConfig(level=logging.INFO, filename="./log_file/" + log_filename, filemode='a',
+                            format=formate,
+                            datefmt='%Y/%m/%d %H:%M:%S'
+    )
 
     flows = {}
     timers = {}
@@ -215,7 +258,7 @@ if __name__ == "__main__":
     # t_while_s = time.process_time()
     ###
     while True:
-        if recv_pkt_amt >= 100:
+        if recv_pkt_amt >= 50:
             break
         
         packet = s.recvfrom( 65565 )
@@ -234,7 +277,7 @@ if __name__ == "__main__":
 
         if len( key ) != 0 and flows.get( key ) == None:
             flows[key] = [ pkt ]
-            timers[key] = Timer(1.0, generate_proc, (flows[key], key))
+            timers[key] = Timer(1.0, generate_proc, (flows[key], key, Lock))
             timers[key].start()
         elif len( key ) != 0:
             timers[key].cancel()
@@ -242,12 +285,12 @@ if __name__ == "__main__":
             if len( flows[key] ) == 8:
                 # do classification
                 # t_proc_s = time.process_time()
-                generate_proc(flows[key], key)
+                generate_proc(flows[key], key, Lock)
                 # t_proc_e = time.process_time()
                 # t_proc += ( t_proc_e - t_proc_s )
             else:
                 flows[key].append( pkt )
-                timers[key] = Timer( 1.0, generate_proc, (flows[key], key) )
+                timers[key] = Timer( 1.0, generate_proc, (flows[key], key, Lock) )
                 timers[key].start()
 
     ###
@@ -257,3 +300,9 @@ if __name__ == "__main__":
     # print( f"Average open process time: { ( t_proc / recv_pkt_amt ) * 1000 }" )
     # print((t_while_e - t_while_s)*1000, end="\n****************\n")
     ###
+
+    time.sleep( 1.1 )
+    remain_proc = mp.active_children()
+    print( str( remain_proc ), len( remain_proc ) )  
+    for i in range( len( remain_proc ) ):
+        remain_proc[i].join()
