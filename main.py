@@ -15,7 +15,6 @@ from pathlib import Path
 import grp, pwd
 import json
 
-
 FIRST_N_PKTS = 8
 FIRST_N_BYTES = 80
 BENIGN_IDX = 10
@@ -43,21 +42,21 @@ Lock = mp.Lock()
 #     return FIN
 
 class JsonFilter(logging.Filter):
- s_addr = 's_addr'
- d_addr = 'd_addr'
- s_port = 's_port'
- d_port = 'd_port'
- c = 'class'
- num_pkts = 'num_pkts'
+    s_addr = 's_addr'
+    d_addr = 'd_addr'
+    s_port = 's_port'
+    d_port = 'd_port'
+    c = 'class'
+    num_pkts = 'num_pkts'
 
- def filter( self, record ):
-  record.s_addr = self.s_addr
-  record.d_addr = self.d_addr
-  record.s_port = self.s_port
-  record.d_port = self.d_port
-  record.c = self.c
-  record.num_pkts = self.num_pkts
-  return True
+    def filter( self, record ):
+        record.s_addr = self.s_addr
+        record.d_addr = self.d_addr
+        record.s_port = self.s_port
+        record.d_port = self.d_port
+        record.c = self.c
+        record.num_pkts = self.num_pkts
+        return True
 
     
 def get_key(pkt):
@@ -169,7 +168,6 @@ def pkt2nparr(flow):
     return pkt2np
 
 def classify_pkt(flow, key, lock):
-
     ###
     t_start = time.process_time()
     ###
@@ -178,13 +176,7 @@ def classify_pkt(flow, key, lock):
     flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
     output = PKT_CLASSIFIER(flow2tensor)
     _, predicted = torch.max(output, 1)
-    # uid = pwd.getpwnam("user").pw_uid
-    # gid = grp.getgrnam("user").gr_gid
-    # os.chown("./log_file", uid, gid)
-    # os.chown("./time_dir", uid, gid)
 
-    # class 10 represents the benign flow
-    # if predicted[0] != 10:
     lock.acquire()
 
     logger = logging.getLogger()
@@ -301,8 +293,8 @@ if __name__ == "__main__":
     # print((t_while_e - t_while_s)*1000, end="\n****************\n")
     ###
 
-    time.sleep( 1.1 )
-    remain_proc = mp.active_children()
-    print( str( remain_proc ), len( remain_proc ) )  
-    for i in range( len( remain_proc ) ):
-        remain_proc[i].join()
+    time.sleep( 2.1 )
+    # remain_proc = mp.active_children()
+    # print( str( remain_proc ), len( remain_proc ) )  
+    # for i in range( len( remain_proc ) ):
+    #     remain_proc[i].join()
