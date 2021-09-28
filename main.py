@@ -194,7 +194,7 @@ def classify_pkt(flow, key, lock):
     lock.release()
     
     t_end = time.process_time()
-    t_consume = t_end - t_start
+    t_consume = (t_end - t_start)*1000
 
     print(f"\n******\nt_consume: {t_consume}\n******\n")
     # _log_filename = str(t_consume*1000)

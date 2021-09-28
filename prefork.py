@@ -12,16 +12,16 @@ from struct import *
 from threading import Timer
 import multiprocessing as mp
 from pathlib import Path
-import grp, pwd
 import json
+import signal
 
 FIRST_N_PKTS = 8
 FIRST_N_BYTES = 80
 BENIGN_IDX = 10
 
-PKT_CLASSIFIER = classifier.CNN_RNN()
-PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
-PKT_CLASSIFIER.eval()
+# PKT_CLASSIFIER = classifier.CNN_RNN()
+# PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
+# PKT_CLASSIFIER.eval()
 
 Lock = mp.Lock()
 
@@ -148,46 +148,50 @@ def pkt2nparr(flow):
 # pkt2nparr()
 
 def classify_proc(msg_queue, lock):
+    PKT_CLASSIFIER = classifier.CNN_RNN()
+    PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
+    PKT_CLASSIFIER.eval()
+    
+    #
+    Path("./time_dir").mkdir(parents=True, exist_ok=True)
+    #
     for data in iter(msg_queue.get, "End of program."):
         [flow, key] = data
         # ###
         t_start = time.process_time()
         # ###
         dealt_flow = pkt2nparr(flow)
-        print(1)
         flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
-        print(flow2tensor)
         output = PKT_CLASSIFIER(flow2tensor)
-        print(3)
         _, predicted = torch.max(output, 1)
-        print(4)
         lock.acquire()
 
-        logger = logging.getLogger()
+        logger = logging.getLogger("classifier")
         filter_ = JsonFilter()
         logger.addFilter( filter_ )
         inf = key.split(' ')
-        filter_.s_addr = inf[1]
-        filter_.d_addr = inf[3]
-        filter_.s_port = inf[5]
-        filter_.d_port = inf[7]
+        if "s_addr" in inf:
+            filter_.s_addr = inf[1]
+            filter_.d_addr = inf[3]
+            if "s_port" in inf:
+                filter_.s_port = inf[5]
+                filter_.d_port = inf[7]
+
         filter_.c = str( predicted[0] )
         filter_.num_pkts = len( flow )
         logger.info( key )
 
         lock.release()
 
+        #
         t_end = time.process_time()
-        t_consume = t_end - t_start
+        t_consume = (t_end - t_start)*1000
 
-        print(f"\n******\nt_consume: {t_consume}\n******\n")
+        print(f"t_consume: {t_consume}")
+        # print(f"\n******\nt_consume: {t_consume}\n******\n")
+        #
+    # for
 # classify_proc()
-
-def pass_pkt2proc(key, flow, msg_q, pkt_dest):
-    proc_now = 'p' + str(pkt_dest)
-    msg_q[proc_now].put([flow.copy(), key])
-    flow.clear()
-# generate_proc()
 
 def decide_pkt_dest(key, proc_create_amt):
     new_key = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16)
@@ -196,7 +200,16 @@ def decide_pkt_dest(key, proc_create_amt):
     return pkt_dest
 # decide_pkt_dest()
 
-if __name__ == "__main__":
+def pass_pkt2proc(key, flow, msg_q, proc_create_amt):
+    # pkt_dest = decide_pkt_dest(key, proc_create_amt)
+    pkt_dest = time.process_time_ns() % proc_create_amt
+    # print(f"pkt_dest: {pkt_dest}")
+    proc_now = 'p' + str(pkt_dest)
+    msg_q[proc_now].put([flow.copy(), key])
+    flow.clear()
+# generate_proc()
+
+def main():
     # open a socket
     try:
         s = socket.socket( socket.AF_PACKET , socket.SOCK_RAW , socket.ntohs( 0x0003 ) )
@@ -219,7 +232,6 @@ if __name__ == "__main__":
                             format=formate,
                             datefmt='%Y/%m/%d %H:%M:%S'
     )
-
     cpu_amt_sub1 = os.cpu_count() - 1
 
     # create the processes to classifiy the packets
@@ -234,36 +246,43 @@ if __name__ == "__main__":
         procs[proc_now].start()
     # for loop
 
+    def signal_handler(signum, frame):
+        for _ in range(cpu_amt_sub1):
+            proc_now = 'p' + str(_)
+            msg_q[proc_now].put("End of program.")
+            procs[proc_now].join()
+    # signal_handler()
+
+    # capture SIGINT signal to avoid the generating of the zombie processes
+    signal.signal(signal.SIGINT, signal_handler)
+
     flows = {}
     timers = {}
     recv_pkt_amt = 0
 
     while True:
-        if recv_pkt_amt >= 10:
+        if recv_pkt_amt >= 1000:
             break
         
         packet = s.recvfrom( 65565 )
         pkt = packet[0]
         key = get_key(pkt)
 
-        # decide which process to go
-        pkt_dest = decide_pkt_dest(key, cpu_amt_sub1)
-
         recv_pkt_amt += 1
 
         if len( key ) != 0 and flows.get( key ) == None:
             flows[key] = [ pkt ]
-            timers[key] = Timer(1.0, pass_pkt2proc, (key, flows[key], msg_q, pkt_dest))
+            timers[key] = Timer(1.0, pass_pkt2proc, (key, flows[key], msg_q, cpu_amt_sub1))
             timers[key].start()
         elif len( key ) != 0:
             timers[key].cancel()
 
             if len( flows[key] ) == 8:
                 # do classification
-                pass_pkt2proc(key, flows[key], msg_q, pkt_dest)
+                pass_pkt2proc(key, flows[key], msg_q, cpu_amt_sub1)
             else:
                 flows[key].append( pkt )
-                timers[key] = Timer( 1.0, pass_pkt2proc, (key, flows[key], msg_q, pkt_dest))
+                timers[key] = Timer( 1.0, pass_pkt2proc, (key, flows[key], msg_q, cpu_amt_sub1))
                 timers[key].start()
         # elif
     # while True
@@ -273,4 +292,7 @@ if __name__ == "__main__":
         proc_now = 'p' + str(_)
         msg_q[proc_now].put("End of program.")
         procs[proc_now].join()
-# if __name__ 
+# main()
+
+if __name__ == "__main__":
+    main()
