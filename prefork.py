@@ -158,7 +158,7 @@ def classify_proc(msg_queue, lock):
     for data in iter(msg_queue.get, "End of program."):
         [flow, key] = data
         # ###
-        t_start = time.process_time()
+        # t_start = time.process_time()
         # ###
         dealt_flow = pkt2nparr(flow)
         flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
@@ -184,10 +184,10 @@ def classify_proc(msg_queue, lock):
         lock.release()
 
         #
-        t_end = time.process_time()
-        t_consume = (t_end - t_start)*1000
+        # t_end = time.process_time()
+        # t_consume = (t_end - t_start)*1000
 
-        print(f"t_consume: {t_consume}")
+        # print(f"t_consume: {t_consume}")
         # print(f"\n******\nt_consume: {t_consume}\n******\n")
         #
     # for
@@ -261,8 +261,8 @@ def main():
     recv_pkt_amt = 0
 
     while True:
-        if recv_pkt_amt >= 1000:
-            break
+        # if recv_pkt_amt >= 10:
+        #     break
         
         packet = s.recvfrom( 65565 )
         pkt = packet[0]
@@ -287,11 +287,11 @@ def main():
         # elif
     # while True
 
-    time.sleep( 1.1 )
-    for _ in range(cpu_amt_sub1):
-        proc_now = 'p' + str(_)
-        msg_q[proc_now].put("End of program.")
-        procs[proc_now].join()
+    # time.sleep( 1.1 )
+    # for _ in range(cpu_amt_sub1):
+    #     proc_now = 'p' + str(_)
+    #     msg_q[proc_now].put("End of program.")
+    #     procs[proc_now].join()
 # main()
 
 if __name__ == "__main__":
