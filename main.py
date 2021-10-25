@@ -1,6 +1,7 @@
 import os
 import time
 import torch
+import hashlib
 import logging
 import datetime
 import classifier
@@ -16,27 +17,7 @@ FIRST_N_PKTS = 8
 FIRST_N_BYTES = 80
 BENIGN_IDX = 10
 
-PKT_CLASSIFIER = classifier.CNN_RNN()
-PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
-PKT_CLASSIFIER.eval()
-
 Lock = mp.Lock()
-
-# def getflags( packet ):
-#     # URG = packet & 0x020
-#     # URG >>= 5
-#     # ACK = packet & 0x010
-#     # ACK >>= 4
-#     # PSH = packet & 0x008
-#     # PSH >>= 3
-#     # RST = packet & 0x004
-#     # RST >>= 2
-#     # SYN = packet & 0x002
-#     # SYN >>= 1
-#     FIN = packet & 0x001
-#     FIN >>= 0
-
-#     return FIN
 
 class JsonFilter(logging.Filter):
     s_addr = 's_addr'
@@ -54,9 +35,8 @@ class JsonFilter(logging.Filter):
         record.c = self.c
         record.num_pkts = self.num_pkts
         return True
-# JsonFilter
+# class JsonFilter
 
-    
 def get_key(pkt):
     key = ''
 
@@ -125,11 +105,6 @@ def get_key(pkt):
             dest_port = udph[1]
 
             key += " s_port " + str( source_port ) + " d_port " + str( dest_port )
-
-        #some other IP packet like IGMP
-        # else :
-        #     print( 'Protocol other than TCP/UDP/ICMP' )
-
     return key
 # get_key()
 
@@ -167,63 +142,100 @@ def pkt2nparr(flow):
     return pkt2np
 # pkt2nparr()
 
-def classify_pkt(flow, key, lock):
-    t_start = time.process_time_ns()
-    # -----------------------------------
+def classify_proc(msg_queue, lock, ID):
+    PKT_CLASSIFIER = classifier.CNN_RNN()
+    PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
+    PKT_CLASSIFIER.eval()
 
-    dealt_flow = pkt2nparr(flow)
-    flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
-    output = PKT_CLASSIFIER(flow2tensor)
-    _, predicted = torch.max(output, 1)
+    flow_types = ["Cridex", "Geodo", "Htbot", "Miuref", "Neris", "Nsis-ay", "Shifu", "Tinba", "Virut", "Zeus", "Benign"]
+    
+    for data in iter(msg_queue.get, "End of program."):
+        [flow, key] = data
 
-    # -----------------------------------
-    t_end = time.process_time_ns()
-    with open( "./classify_time", "a" ) as f:
-        f.write( str( t_end - t_start ) + '\n' )
+        t_start = time.process_time_ns()
+        # -----------------------------------
+        dealt_flow = pkt2nparr(flow)
+        flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
+        output = PKT_CLASSIFIER(flow2tensor)
+        _, predicted = torch.max(output, 1)
+        # -----------------------------------
+        t_end = time.process_time_ns()
+    
+        with open( "./classify_time_" + str(ID), "a" ) as f:
+            f.write( str( t_end - t_start ) + '\n' )
+        
+        
+        t_start = time.process_time_ns()
+        # -----------------------------------
+        lock.acquire() 
+        # -----------------------------------
+        t_end = time.process_time_ns()
 
-    t_start = time.process_time_ns()
-    # -----------------------------------
-    lock.acquire()
-    # -----------------------------------
-    t_end = time.process_time_ns()
+        with open( "./lock_time_" + str(ID), "a" ) as f:
+            f.write( str( t_end - t_start ) + '\n' )
 
-    if predicted[0] != 10:
-        logger = logging.getLogger()
-        filter_ = JsonFilter()
-        logger.addFilter( filter_ )
-        inf = key.split(' ')
-        if "s_addr" in inf:
-            filter_.s_addr = inf[1]
-            filter_.d_addr = inf[3]
-            if "s_port" in inf:
-                filter_.s_port = inf[5]
-                filter_.d_port = inf[7]
+        t_start = time.process_time_ns()
+        # -----------------------------------
+        if predicted[0] != 10:
+            logger = logging.getLogger("classifier")
+            filter_ = JsonFilter()
+            logger.addFilter( filter_ )
+            inf = key.split(' ')
+            if "s_addr" in inf:
+                filter_.s_addr = inf[1]
+                filter_.d_addr = inf[3]
+                if "s_port" in inf:
+                    filter_.s_port = inf[5]
+                    filter_.d_port = inf[7]
 
-        filter_.c = str( predicted[0] )
-        filter_.num_pkts = len( flow )
-        logger.info( key )
-    # -----------------------------------
-    t_end = time.process_time_ns()
+            filter_.c = str( flow_types[predicted[0]] )
+            filter_.num_pkts = len( flow )
+            logger.info( key )
+        # -----------------------------------
+        t_end = time.process_time_ns()
 
-    lock.release()
-    with open( "./log_time", "a" ) as f:
-        f.write( str( t_end - t_start ) + '\n' )
-# classify_pkt()
+        with open( "./log_time_" + str(ID), "a" ) as f:
+            f.write( str( t_end - t_start ) + '\n' )
 
-def generate_proc(flow, key, lock):
-    p = mp.Process(target=classify_pkt, args=(flow, key, lock, ), daemon=True)
-    p.start()
+        lock.release()
+    # for
+# classify_proc()
 
+def decide_pkt_dest(key, proc_create_amt):
+    new_key = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16)
+    pkt_dest = new_key % proc_create_amt
+    
+    return pkt_dest
+# decide_pkt_dest()
+
+def pass_pkt2proc(key, flow, msg_q, proc_create_amt):
+    # pkt_dest = decide_pkt_dest(key, proc_create_amt)
+    pkt_dest = time.process_time_ns() % proc_create_amt
+    # print(f"pkt_dest: {pkt_dest}")
+    proc_now = 'p' + str(pkt_dest)
+    msg_q[proc_now].put([flow.copy(), key])
     flow.clear()
+# generate_proc()
 
-if __name__ == "__main__":
+def main():
     # open a socket
     try:
         s = socket.socket( socket.AF_PACKET , socket.SOCK_RAW , socket.ntohs( 0x0003 ) )
+        
+        # check whether the socket module offer SO_BINDTODEVICE which is caused by portability reasons.
+        if not hasattr(socket, "SO_BINDTODEVICE"):
+            socket.SO_BINDTODEVICE = 25
+        
+        # set socket option if specified
+        # first argument will retrieve options at the socket level
+        # second will make socket efficient only on the specific network interface
+        if len(sys.argv) > 1:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, (sys.argv[1] + '\0').encode("utf-8"))
+
     except socket.error as e:
         print( e )
         sys.exit()
-    
+
     # create the log file directory if path is not exist
     Path("./log_file").mkdir(parents=True, exist_ok=True)
     log_filename = datetime.datetime.now().strftime(f"%Y-%m-%d.log")
@@ -239,13 +251,41 @@ if __name__ == "__main__":
                             format=formate,
                             datefmt='%Y/%m/%d %H:%M:%S'
     )
+    # cpu_amt_sub1 = os.cpu_count() - 1
+    # if cpu_amt_sub1 < 1:
+    #     cpu_amt_sub1 = 1
+
+    # print(f"cpu_amt_sub1: {cpu_amt_sub1}")
+    cpu_amt_sub1 = 1
+
+    # create the processes to classifiy the packets
+    procs = {}
+    msg_q = {}
+    for _ in range(cpu_amt_sub1):
+        proc_now = 'p' + str(_)
+
+        msg_q[proc_now] = mp.Queue()
+        procs[proc_now] = mp.Process(target=classify_proc
+                            , args=(msg_q[proc_now], Lock, _,), daemon=True)
+        procs[proc_now].start()
+    # for loop
+
+    # def signal_handler(signum, frame):
+    #     for _ in range(cpu_amt_sub1):
+    #         proc_now = 'p' + str(_)
+    #         msg_q[proc_now].put("End of program.")
+    #         procs[proc_now].join()
+    # # signal_handler()
+
+    # # capture SIGINT signal to avoid the generating of the zombie processes
+    # signal.signal(signal.SIGINT, signal_handler)
 
     flows = {}
     timers = {}
     recv_pkt_amt = 0
 
     while True:
-        if recv_pkt_amt >= 1000:
+        if recv_pkt_amt >= 100:
             break
         
         packet = s.recvfrom( 65565 )
@@ -256,17 +296,27 @@ if __name__ == "__main__":
 
         if len( key ) != 0 and flows.get( key ) == None:
             flows[key] = [ pkt ]
-            timers[key] = Timer(1.0, generate_proc, (flows[key], key, Lock))
+            timers[key] = Timer(1.0, pass_pkt2proc, (key, flows[key], msg_q, cpu_amt_sub1))
             timers[key].start()
         elif len( key ) != 0:
             timers[key].cancel()
 
             if len( flows[key] ) == 8:
                 # do classification
-                generate_proc(flows[key], key, Lock)
+                pass_pkt2proc(key, flows[key], msg_q, cpu_amt_sub1)
             else:
                 flows[key].append( pkt )
-                timers[key] = Timer( 1.0, generate_proc, (flows[key], key, Lock) )
+                timers[key] = Timer( 1.0, pass_pkt2proc, (key, flows[key], msg_q, cpu_amt_sub1))
                 timers[key].start()
+        # elif
+    # while True
 
-    time.sleep( 2 )
+    time.sleep( 1.5 )
+    for _ in range(cpu_amt_sub1):
+        proc_now = 'p' + str(_)
+        msg_q[proc_now].put("End of program.")
+        # procs[proc_now].join()
+# main()
+
+if __name__ == "__main__":
+    main()
