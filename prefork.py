@@ -151,45 +151,58 @@ def classify_proc(msg_queue, lock):
     PKT_CLASSIFIER = classifier.CNN_RNN()
     PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
     PKT_CLASSIFIER.eval()
-    
-    #
+     
     Path("./time_dir").mkdir(parents=True, exist_ok=True)
-    #
+    
     for data in iter(msg_queue.get, "End of program."):
         [flow, key] = data
-        # ###
-        # t_start = time.process_time()
-        # ###
+
+        t_start = time.process_time_ns()
+        # -----------------------------------
         dealt_flow = pkt2nparr(flow)
         flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
         output = PKT_CLASSIFIER(flow2tensor)
         _, predicted = torch.max(output, 1)
-        lock.acquire()
+        # -----------------------------------
+        t_end = time.process_time_ns()
+    
+        with open( "./classify_time", "a" ) as f:
+            f.write( str( t_start - t_end ) )
+        
+        
+        t_start = time.process_time_ns()
+        # -----------------------------------
+        lock.acquire() 
+        # -----------------------------------
+        t_end = time.process_time_ns()
 
-        logger = logging.getLogger("classifier")
-        filter_ = JsonFilter()
-        logger.addFilter( filter_ )
-        inf = key.split(' ')
-        if "s_addr" in inf:
-            filter_.s_addr = inf[1]
-            filter_.d_addr = inf[3]
-            if "s_port" in inf:
-                filter_.s_port = inf[5]
-                filter_.d_port = inf[7]
+        with open( "./lock_time", "a" ) as f:
+            f.write( str( t_start - t_end ) )
 
-        filter_.c = str( predicted[0] )
-        filter_.num_pkts = len( flow )
-        logger.info( key )
+        t_start = time.process_time_ns()
+        # -----------------------------------
+        if predicted[0] != 10:
+            logger = logging.getLogger("classifier")
+            filter_ = JsonFilter()
+            logger.addFilter( filter_ )
+            inf = key.split(' ')
+            if "s_addr" in inf:
+                filter_.s_addr = inf[1]
+                filter_.d_addr = inf[3]
+                if "s_port" in inf:
+                    filter_.s_port = inf[5]
+                    filter_.d_port = inf[7]
+
+            filter_.c = str( predicted[0] )
+            filter_.num_pkts = len( flow )
+            logger.info( key )
+        # -----------------------------------
+        t_end = time.process_time_ns()
+
+        with open( "./log_time", "a" ) as f:
+            f.write( str( t_start - t_end ) )
 
         lock.release()
-
-        #
-        # t_end = time.process_time()
-        # t_consume = (t_end - t_start)*1000
-
-        # print(f"t_consume: {t_consume}")
-        # print(f"\n******\nt_consume: {t_consume}\n******\n")
-        #
     # for
 # classify_proc()
 
@@ -242,27 +255,27 @@ def main():
 
         msg_q[proc_now] = mp.Queue()
         procs[proc_now] = mp.Process(target=classify_proc
-                            , args=(msg_q[proc_now], Lock, ), daemon=False)
+                            , args=(msg_q[proc_now], Lock, ), daemon=True)
         procs[proc_now].start()
     # for loop
 
-    def signal_handler(signum, frame):
-        for _ in range(cpu_amt_sub1):
-            proc_now = 'p' + str(_)
-            msg_q[proc_now].put("End of program.")
-            procs[proc_now].join()
-    # signal_handler()
+    # def signal_handler(signum, frame):
+    #     for _ in range(cpu_amt_sub1):
+    #         proc_now = 'p' + str(_)
+    #         msg_q[proc_now].put("End of program.")
+    #         procs[proc_now].join()
+    # # signal_handler()
 
-    # capture SIGINT signal to avoid the generating of the zombie processes
-    signal.signal(signal.SIGINT, signal_handler)
+    # # capture SIGINT signal to avoid the generating of the zombie processes
+    # signal.signal(signal.SIGINT, signal_handler)
 
     flows = {}
     timers = {}
     recv_pkt_amt = 0
 
     while True:
-        # if recv_pkt_amt >= 10:
-        #     break
+        if recv_pkt_amt >= 10:
+            break
         
         packet = s.recvfrom( 65565 )
         pkt = packet[0]
@@ -287,11 +300,11 @@ def main():
         # elif
     # while True
 
-    # time.sleep( 1.1 )
-    # for _ in range(cpu_amt_sub1):
-    #     proc_now = 'p' + str(_)
-    #     msg_q[proc_now].put("End of program.")
-    #     procs[proc_now].join()
+    time.sleep( 1.5 )
+    for _ in range(cpu_amt_sub1):
+        proc_now = 'p' + str(_)
+        msg_q[proc_now].put("End of program.")
+        # procs[proc_now].join()
 # main()
 
 if __name__ == "__main__":
