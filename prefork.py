@@ -19,10 +19,6 @@ FIRST_N_PKTS = 8
 FIRST_N_BYTES = 80
 BENIGN_IDX = 10
 
-# PKT_CLASSIFIER = classifier.CNN_RNN()
-# PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
-# PKT_CLASSIFIER.eval()
-
 Lock = mp.Lock()
 
 class JsonFilter(logging.Filter):
@@ -41,6 +37,7 @@ class JsonFilter(logging.Filter):
         record.c = self.c
         record.num_pkts = self.num_pkts
         return True
+# class JsonFilter
 
 def get_key(pkt):
     key = ''
@@ -151,8 +148,8 @@ def classify_proc(msg_queue, lock):
     PKT_CLASSIFIER = classifier.CNN_RNN()
     PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
     PKT_CLASSIFIER.eval()
-     
-    Path("./time_dir").mkdir(parents=True, exist_ok=True)
+
+    flow_types = ["Cridex", "Geodo", "Htbot", "Miuref", "Neris", "Nsis-ay", "Shifu", "Tinba", "Virut", "Zeus", "Benign"]
     
     for data in iter(msg_queue.get, "End of program."):
         [flow, key] = data
@@ -167,7 +164,7 @@ def classify_proc(msg_queue, lock):
         t_end = time.process_time_ns()
     
         with open( "./classify_time", "a" ) as f:
-            f.write( str( t_start - t_end ) )
+            f.write( str( t_end - t_start ) + '\n' )
         
         
         t_start = time.process_time_ns()
@@ -177,7 +174,7 @@ def classify_proc(msg_queue, lock):
         t_end = time.process_time_ns()
 
         with open( "./lock_time", "a" ) as f:
-            f.write( str( t_start - t_end ) )
+            f.write( str( t_end - t_start ) + '\n' )
 
         t_start = time.process_time_ns()
         # -----------------------------------
@@ -193,14 +190,14 @@ def classify_proc(msg_queue, lock):
                     filter_.s_port = inf[5]
                     filter_.d_port = inf[7]
 
-            filter_.c = str( predicted[0] )
+            filter_.c = str( flow_types[predicted[0]] )
             filter_.num_pkts = len( flow )
             logger.info( key )
         # -----------------------------------
         t_end = time.process_time_ns()
 
         with open( "./log_time", "a" ) as f:
-            f.write( str( t_start - t_end ) )
+            f.write( str( t_end - t_start ) + '\n' )
 
         lock.release()
     # for
@@ -245,7 +242,10 @@ def main():
                             format=formate,
                             datefmt='%Y/%m/%d %H:%M:%S'
     )
-    cpu_amt_sub1 = os.cpu_count() - 1
+    # cpu_amt_sub1 = os.cpu_count() - 1
+    # if cpu_amt_sub1 < 1:
+    #     cpu_amt_sub1 = 1
+    cpu_amt_sub1 = 1
 
     # create the processes to classifiy the packets
     procs = {}
@@ -274,7 +274,7 @@ def main():
     recv_pkt_amt = 0
 
     while True:
-        if recv_pkt_amt >= 10:
+        if recv_pkt_amt >= 1000:
             break
         
         packet = s.recvfrom( 65565 )
