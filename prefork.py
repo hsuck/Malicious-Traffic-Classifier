@@ -1,6 +1,5 @@
 import os
 import time
-import fcntl
 import torch
 import hashlib
 import logging
@@ -144,7 +143,7 @@ def pkt2nparr(flow):
     return pkt2np
 # pkt2nparr()
 
-def classify_proc(msg_queue, lock):
+def classify_proc(msg_queue, lock, ID):
     PKT_CLASSIFIER = classifier.CNN_RNN()
     PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
     PKT_CLASSIFIER.eval()
@@ -163,7 +162,7 @@ def classify_proc(msg_queue, lock):
         # -----------------------------------
         t_end = time.process_time_ns()
     
-        with open( "./classify_time", "a" ) as f:
+        with open( "./classify_time_" + str(ID), "a" ) as f:
             f.write( str( t_end - t_start ) + '\n' )
         
         
@@ -173,7 +172,7 @@ def classify_proc(msg_queue, lock):
         # -----------------------------------
         t_end = time.process_time_ns()
 
-        with open( "./lock_time", "a" ) as f:
+        with open( "./lock_time_" + str(ID), "a" ) as f:
             f.write( str( t_end - t_start ) + '\n' )
 
         t_start = time.process_time_ns()
@@ -196,7 +195,7 @@ def classify_proc(msg_queue, lock):
         # -----------------------------------
         t_end = time.process_time_ns()
 
-        with open( "./log_time", "a" ) as f:
+        with open( "./log_time_" + str(ID), "a" ) as f:
             f.write( str( t_end - t_start ) + '\n' )
 
         lock.release()
@@ -245,7 +244,13 @@ def main():
     # cpu_amt_sub1 = os.cpu_count() - 1
     # if cpu_amt_sub1 < 1:
     #     cpu_amt_sub1 = 1
+
+    # print(f"cpu_amt_sub1: {cpu_amt_sub1}")
     cpu_amt_sub1 = 1
+
+
+    # get cmd arguments
+    # sys.argv[1]
 
     # create the processes to classifiy the packets
     procs = {}
@@ -255,7 +260,7 @@ def main():
 
         msg_q[proc_now] = mp.Queue()
         procs[proc_now] = mp.Process(target=classify_proc
-                            , args=(msg_q[proc_now], Lock, ), daemon=True)
+                            , args=(msg_q[proc_now], Lock, _,), daemon=True)
         procs[proc_now].start()
     # for loop
 
@@ -274,7 +279,7 @@ def main():
     recv_pkt_amt = 0
 
     while True:
-        if recv_pkt_amt >= 1000:
+        if recv_pkt_amt >= 100:
             break
         
         packet = s.recvfrom( 65565 )

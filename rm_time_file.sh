@@ -1,3 +1,3 @@
 #!/bin/bash
 
-sudo rm *time
+sudo rm classify_time_* log_time_* lock_time_*
