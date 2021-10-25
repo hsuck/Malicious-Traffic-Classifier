@@ -1,7 +1,6 @@
 import os
 import time
 import torch
-import hashlib
 import logging
 import datetime
 import classifier
@@ -25,6 +24,7 @@ class JsonFilter(logging.Filter):
     s_port = 's_port'
     d_port = 'd_port'
     c = 'class'
+    p = "procotol"
     num_pkts = 'num_pkts'
 
     def filter( self, record ):
@@ -33,6 +33,7 @@ class JsonFilter(logging.Filter):
         record.s_port = self.s_port
         record.d_port = self.d_port
         record.c = self.c
+        record.p = self.p
         record.num_pkts = self.num_pkts
         return True
 # class JsonFilter
@@ -77,21 +78,24 @@ def get_key(pkt):
             dest_port = tcph[1]
 
             key += " s_port " + str( source_port ) + " d_port " + str( dest_port )
+            
+            return key + " protocol TCP"
 
-        #ICMP Packets
-        # elif protocol == 1:
-            # check_protocol = True
+        # ICMP Packets
+        elif protocol == 1:
+            check_protocol = True
 
-            # u = iph_length + eth_length
-            # icmph_length = 4
-            # icmp_header = packet[u:u+4]
+            u = iph_length + eth_length
+            icmph_length = 4
+            icmp_header = pkt[u:u+4]
 
             # now unpack them :)
-            # icmph = unpack( '!BBH' , icmp_header ) 
+            icmph = unpack( '!BBH' , icmp_header ) 
             
             # icmp_type = icmph[0]
             # code = icmph[1]
             # checksum = icmph[2]
+            return key + " s_port None d_port None protocol ICMP"
         
         # UDP packets
         elif protocol == 17 :
@@ -105,7 +109,9 @@ def get_key(pkt):
             dest_port = udph[1]
 
             key += " s_port " + str( source_port ) + " d_port " + str( dest_port )
-    return key
+
+            return key + " protocol UDP"
+    return key + " s_port None d_port None protocol IP"
 # get_key()
 
 def pkt2nparr(flow):
@@ -176,19 +182,17 @@ def classify_proc(msg_queue, lock, ID):
 
         t_start = time.process_time_ns()
         # -----------------------------------
-        if predicted[0] != 10:
+        if predicted[0] != BENIGN_IDX:
             logger = logging.getLogger("classifier")
             filter_ = JsonFilter()
             logger.addFilter( filter_ )
             inf = key.split(' ')
-            if "s_addr" in inf:
-                filter_.s_addr = inf[1]
-                filter_.d_addr = inf[3]
-                if "s_port" in inf:
-                    filter_.s_port = inf[5]
-                    filter_.d_port = inf[7]
-
-            filter_.c = str( flow_types[predicted[0]] )
+            filter_.s_addr = inf[1]
+            filter_.d_addr = inf[3]
+            filter_.s_port = inf[5]
+            filter_.d_port = inf[7]
+            filter_.c = flow_types[predicted[0]]
+            filter_.p = inf[9]
             filter_.num_pkts = len( flow )
             logger.info( key )
         # -----------------------------------
@@ -201,17 +205,8 @@ def classify_proc(msg_queue, lock, ID):
     # for
 # classify_proc()
 
-def decide_pkt_dest(key, proc_create_amt):
-    new_key = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16)
-    pkt_dest = new_key % proc_create_amt
-    
-    return pkt_dest
-# decide_pkt_dest()
-
 def pass_pkt2proc(key, flow, msg_q, proc_create_amt):
-    # pkt_dest = decide_pkt_dest(key, proc_create_amt)
     pkt_dest = time.process_time_ns() % proc_create_amt
-    # print(f"pkt_dest: {pkt_dest}")
     proc_now = 'p' + str(pkt_dest)
     msg_q[proc_now].put([flow.copy(), key])
     flow.clear()
@@ -222,16 +217,15 @@ def main():
     try:
         s = socket.socket( socket.AF_PACKET , socket.SOCK_RAW , socket.ntohs( 0x0003 ) )
         
-        # check whether the socket module offer SO_BINDTODEVICE which is caused by portability reasons.
-        if not hasattr(socket, "SO_BINDTODEVICE"):
-            socket.SO_BINDTODEVICE = 25
-        
-        # set socket option if specified
-        # first argument will retrieve options at the socket level
-        # second will make socket efficient only on the specific network interface
         if len(sys.argv) > 1:
+            # check whether the socket module offer SO_BINDTODEVICE, which is caused by portability reasons.
+            if not hasattr(socket, "SO_BINDTODEVICE"):
+                socket.SO_BINDTODEVICE = 25
+            
+            # set socket option if specified
+            # first argument will retrieve options at the socket level
+            # second will make socket efficient only on the specific network interface
             s.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, (sys.argv[1] + '\0').encode("utf-8"))
-
     except socket.error as e:
         print( e )
         sys.exit()
@@ -240,6 +234,7 @@ def main():
     Path("./log_file").mkdir(parents=True, exist_ok=True)
     log_filename = datetime.datetime.now().strftime(f"%Y-%m-%d.log")
     formate = json.dumps({"timestamp": "%(asctime)s.%(msecs)03d",
+                          "protocol": "%(p)s",
                           "source address": "%(s_addr)s",
                           "destination address": "%(d_addr)s",
                           "source port": "%(s_port)s",

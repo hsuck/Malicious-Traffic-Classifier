@@ -18,4 +18,7 @@ This command will create a virtual environment upon the directory where you run 
 ```
 source your_env_name/bin/activate
 ```
-Finally, after installing all packages listed above, you'll be able to execute the program.
+Finally, after installing all packages listed above, you'll be able to execute the program with an argument specified the network interface.
+```
+python3 main.py network_interface_name
+```
