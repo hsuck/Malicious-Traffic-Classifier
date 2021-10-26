@@ -115,10 +115,10 @@ def get_key(pkt):
 
             return key + " protocol UDP"
         
-        return key + " protocol others"
+        return key + " s_port None d_port None protocol others"
     # if eth
 
-    return key + " s_port None d_port None protocol others"
+    return key + "s_addr None d_addr None s_port None d_port None protocol others"
 # get_key()
 
 def pkt2nparr(flow):
@@ -284,7 +284,7 @@ def main():
 
     flows = {}
     timers = {}
-    recv_pkt_amt = 0
+    # recv_pkt_amt = 0
 
     while True:
         # if recv_pkt_amt >= 100:
