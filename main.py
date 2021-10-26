@@ -43,6 +43,9 @@ def get_key(pkt):
 
     eth_length = 14
     eth_header = pkt[: eth_length]
+
+    # ! represents network (big endian); 6s represents 6 bytes
+    # 6sH represents an unsugned short follows 6 bytes
     eth = unpack( '!6s6sH' , eth_header )
     eth_protocol = socket.ntohs( eth[2] )
 
@@ -111,7 +114,11 @@ def get_key(pkt):
             key += " s_port " + str( source_port ) + " d_port " + str( dest_port )
 
             return key + " protocol UDP"
-    return key + " s_port None d_port None protocol IP"
+        
+        return key + " protocol others"
+    # if eth
+
+    return key + " s_port None d_port None protocol others"
 # get_key()
 
 def pkt2nparr(flow):
@@ -158,29 +165,29 @@ def classify_proc(msg_queue, lock, ID):
     for data in iter(msg_queue.get, "End of program."):
         [flow, key] = data
 
-        t_start = time.process_time_ns()
+        # t_start = time.process_time_ns()
         # -----------------------------------
         dealt_flow = pkt2nparr(flow)
         flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
         output = PKT_CLASSIFIER(flow2tensor)
         _, predicted = torch.max(output, 1)
         # -----------------------------------
-        t_end = time.process_time_ns()
+        # t_end = time.process_time_ns()
     
-        with open( "./classify_time_" + str(ID), "a" ) as f:
-            f.write( str( t_end - t_start ) + '\n' )
+        # with open( "./classify_time_" + str(ID), "a" ) as f:
+        #     f.write( str( t_end - t_start ) + '\n' )
         
         
-        t_start = time.process_time_ns()
+        # t_start = time.process_time_ns()
         # -----------------------------------
         lock.acquire() 
         # -----------------------------------
-        t_end = time.process_time_ns()
+        # t_end = time.process_time_ns()
 
-        with open( "./lock_time_" + str(ID), "a" ) as f:
-            f.write( str( t_end - t_start ) + '\n' )
+        # with open( "./lock_time_" + str(ID), "a" ) as f:
+        #     f.write( str( t_end - t_start ) + '\n' )
 
-        t_start = time.process_time_ns()
+        # t_start = time.process_time_ns()
         # -----------------------------------
         if predicted[0] != BENIGN_IDX:
             logger = logging.getLogger("classifier")
@@ -196,10 +203,10 @@ def classify_proc(msg_queue, lock, ID):
             filter_.num_pkts = len( flow )
             logger.info( key )
         # -----------------------------------
-        t_end = time.process_time_ns()
+        # t_end = time.process_time_ns()
 
-        with open( "./log_time_" + str(ID), "a" ) as f:
-            f.write( str( t_end - t_start ) + '\n' )
+        # with open( "./log_time_" + str(ID), "a" ) as f:
+        #     f.write( str( t_end - t_start ) + '\n' )
 
         lock.release()
     # for
@@ -280,14 +287,14 @@ def main():
     recv_pkt_amt = 0
 
     while True:
-        if recv_pkt_amt >= 100:
-            break
+        # if recv_pkt_amt >= 100:
+        #     break
         
         packet = s.recvfrom( 65565 )
         pkt = packet[0]
         key = get_key(pkt)
 
-        recv_pkt_amt += 1
+        # recv_pkt_amt += 1
 
         if len( key ) != 0 and flows.get( key ) == None:
             flows[key] = [ pkt ]
@@ -306,10 +313,10 @@ def main():
         # elif
     # while True
 
-    time.sleep( 1.5 )
-    for _ in range(cpu_amt_sub1):
-        proc_now = 'p' + str(_)
-        msg_q[proc_now].put("End of program.")
+    # time.sleep( 1.5 )
+    # for _ in range(cpu_amt_sub1):
+    #     proc_now = 'p' + str(_)
+    #     msg_q[proc_now].put("End of program.")
         # procs[proc_now].join()
 # main()
 
