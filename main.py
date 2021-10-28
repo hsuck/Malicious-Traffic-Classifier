@@ -121,7 +121,7 @@ def get_key(pkt):
     return key + "s_addr None d_addr None s_port None d_port None protocol others"
 # get_key()
 
-def pkt2nparr(flow):
+def pkt2nparr(flow, ID):
     pkt_content = []
 
     for nth_pkt in range(min(len(flow), FIRST_N_PKTS)):
@@ -143,11 +143,16 @@ def pkt2nparr(flow):
 
         # if nth_pkt is less than 8, then fill it with 0 too
         if nth_pkt == (len(flow) - 1) and nth_pkt < FIRST_N_PKTS-1:
+            append_zero = 0
             while nth_pkt != FIRST_N_PKTS-1:
                 for _ in range(FIRST_N_BYTES):
                     pkt_content.append(0)
+                    append_zero += 1
 
                 nth_pkt += 1
+
+            with open( "./dealt_flow_time_" + str(ID), "a" ) as f:
+                f.write( str( append_zero ) + '\n' ) 
     # for end
 
     pkt2np = np.array(pkt_content).reshape(1, 8, 80)
@@ -156,8 +161,13 @@ def pkt2nparr(flow):
 # pkt2nparr()
 
 def classify_proc(msg_queue, lock, ID):
-    PKT_CLASSIFIER = classifier.CNN_RNN()
-    PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device("cpu")))
+    if torch.cuda.is_available():
+        device = "cuda"
+        CUDA = True
+    else:
+        device = "cpu"
+    PKT_CLASSIFIER = classifier.CNN_RNN().to(device)
+    PKT_CLASSIFIER.load_state_dict(torch.load("pkt_classifier.pt", map_location=torch.device(device)))
     PKT_CLASSIFIER.eval()
 
     flow_types = ["Cridex", "Geodo", "Htbot", "Miuref", "Neris", "Nsis-ay", "Shifu", "Tinba", "Virut", "Zeus", "Benign"]
@@ -167,27 +177,49 @@ def classify_proc(msg_queue, lock, ID):
 
         # t_start = time.process_time_ns()
         # -----------------------------------
-        dealt_flow = pkt2nparr(flow)
-        flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
-        output = PKT_CLASSIFIER(flow2tensor)
-        _, predicted = torch.max(output, 1)
+        dealt_flow = pkt2nparr(flow, ID)
         # -----------------------------------
         # t_end = time.process_time_ns()
-    
-        # with open( "./classify_time_" + str(ID), "a" ) as f:
+        # with open( "./dealt_flow_time_" + str(ID), "a" ) as f:
         #     f.write( str( t_end - t_start ) + '\n' )
+
+
+        t_start = time.process_time_ns()
+        # -----------------------------------
+        flow2tensor = torch.tensor(dealt_flow, dtype=torch.float)
+        tensor2cuda = flow2tensor.cuda()
+        # -----------------------------------
+        t_end = time.process_time_ns()
+        with open( "./flow2tensor_time_" + str(ID), "a" ) as f:
+            f.write( str( t_end - t_start ) + '\n' )
+
+        t_start = time.process_time_ns()
+        # -----------------------------------
+        output = PKT_CLASSIFIER(tensor2cuda)
+        # -----------------------------------
+        t_end = time.process_time_ns()
+        with open( "./classifier_time_" + str(ID), "a" ) as f:
+            f.write( str( t_end - t_start ) + '\n' )
+
+        t_start = time.process_time_ns()
+        # -----------------------------------
+        _, predicted = torch.max(output, 1)
+        # -----------------------------------
+        t_end = time.process_time_ns()
+        with open( "./predicted_time_" + str(ID), "a" ) as f:
+            f.write( str( t_end - t_start ) + '\n' )
         
         
-        # t_start = time.process_time_ns()
+        t_start = time.process_time_ns()
         # -----------------------------------
         lock.acquire() 
         # -----------------------------------
-        # t_end = time.process_time_ns()
+        t_end = time.process_time_ns()
 
-        # with open( "./lock_time_" + str(ID), "a" ) as f:
-        #     f.write( str( t_end - t_start ) + '\n' )
+        with open( "./lock_time_" + str(ID), "a" ) as f:
+            f.write( str( t_end - t_start ) + '\n' )
 
-        # t_start = time.process_time_ns()
+        t_start = time.process_time_ns()
         # -----------------------------------
         if predicted[0] != BENIGN_IDX:
             logger = logging.getLogger("classifier")
@@ -203,10 +235,10 @@ def classify_proc(msg_queue, lock, ID):
             filter_.num_pkts = len( flow )
             logger.info( key )
         # -----------------------------------
-        # t_end = time.process_time_ns()
+        t_end = time.process_time_ns()
 
-        # with open( "./log_time_" + str(ID), "a" ) as f:
-        #     f.write( str( t_end - t_start ) + '\n' )
+        with open( "./log_time_" + str(ID), "a" ) as f:
+            f.write( str( t_end - t_start ) + '\n' )
 
         lock.release()
     # for
@@ -257,8 +289,8 @@ def main():
     # if cpu_amt_sub1 < 1:
     #     cpu_amt_sub1 = 1
 
-    # print(f"cpu_amt_sub1: {cpu_amt_sub1}")
     cpu_amt_sub1 = 1
+    # print(f"cpu_amt_sub1: {cpu_amt_sub1}")
 
     # create the processes to classifiy the packets
     procs = {}
@@ -277,24 +309,24 @@ def main():
     #         proc_now = 'p' + str(_)
     #         msg_q[proc_now].put("End of program.")
     #         procs[proc_now].join()
-    # # signal_handler()
+    # signal_handler()
 
-    # # capture SIGINT signal to avoid the generating of the zombie processes
+    # capture SIGINT signal to avoid the generating of the zombie processes
     # signal.signal(signal.SIGINT, signal_handler)
 
     flows = {}
     timers = {}
-    # recv_pkt_amt = 0
+    recv_pkt_amt = 0
 
     while True:
-        # if recv_pkt_amt >= 100:
-        #     break
+        if recv_pkt_amt >= 100:
+            break
         
         packet = s.recvfrom( 65565 )
         pkt = packet[0]
         key = get_key(pkt)
 
-        # recv_pkt_amt += 1
+        recv_pkt_amt += 1
 
         if len( key ) != 0 and flows.get( key ) == None:
             flows[key] = [ pkt ]
@@ -313,10 +345,10 @@ def main():
         # elif
     # while True
 
-    # time.sleep( 1.5 )
-    # for _ in range(cpu_amt_sub1):
-    #     proc_now = 'p' + str(_)
-    #     msg_q[proc_now].put("End of program.")
+    time.sleep( 1.5 )
+    for _ in range(cpu_amt_sub1):
+        proc_now = 'p' + str(_)
+        msg_q[proc_now].put("End of program.")
         # procs[proc_now].join()
 # main()
 
