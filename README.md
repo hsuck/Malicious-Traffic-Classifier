@@ -8,7 +8,7 @@ You should be able to execute the program on the following platforms:
 * Ubuntu 20.04
 ## Dependencies
 * The latest version of numpy (1.21.1 or greater)
-* The latest version of [pytorch](https://pytorch.org/) **with compute platform on CPU** (torch version of 1.9.1 or greater)
+* The latest version of [pytorch](https://pytorch.org/) **with compute platform on CUDA 10.2/11.3**
 ## Execution
 To execute the program, you should create a new environment used to install all package in need first. 
 ```
