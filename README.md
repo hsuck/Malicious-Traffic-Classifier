@@ -7,7 +7,7 @@
 You should be able to execute the program on the following platforms:
 * Ubuntu 20.04
 ## Dependencies
-* The proper version of nvidia druvers uf you'd like to use the cuda device. (You could refer to this [website](https://linuxconfig.org/how-to-install-the-nvidia-drivers-on-ubuntu-20-04-focal-fossa-linux))
+* The proper version of nvidia drivers if you'd like to use the cuda device. (You could refer to this [website](https://linuxconfig.org/how-to-install-the-nvidia-drivers-on-ubuntu-20-04-focal-fossa-linux))
 * The latest version of numpy (1.21.1 or greater)
 * The latest version of [pytorch](https://pytorch.org/) **with compute platform on CUDA 10.2/11.3**
 ## Execution
