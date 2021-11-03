@@ -1,8 +1,8 @@
 # Malicious-Traffic-Classifier
 ## Table of contents
-* [Platforms](##platforms)
-* [Dependencies](##Dependencies)
-* [Execution](##Execution)
+* [Platforms](#platforms)
+* [Dependencies](#Dependencies)
+* [Execution](#Execution)
 ## Platforms
 You should be able to execute the program on the following platforms:
 * Ubuntu 20.04
