@@ -318,17 +318,17 @@ def main():
 
     flows = {}
     timers = {}
-    recv_pkt_amt = 0
+    # recv_pkt_amt = 0
 
     while True:
-        if recv_pkt_amt >= 100:
-            break
+        # if recv_pkt_amt >= 100:
+        #     break
         
         packet = s.recvfrom( 65565 )
         pkt = packet[0]
         key = get_key(pkt)
 
-        recv_pkt_amt += 1
+        # recv_pkt_amt += 1
 
         if len( key ) != 0 and flows.get( key ) == None:
             flows[key] = [ pkt ]
@@ -347,11 +347,11 @@ def main():
         # elif
     # while True
 
-    time.sleep( 1.5 )
-    for _ in range(cpu_amt_sub1):
-        proc_now = 'p' + str(_)
-        msg_q[proc_now].put("End of program.")
-        procs[proc_now].join()
+    # time.sleep( 1.5 )
+    # for _ in range(cpu_amt_sub1):
+    #     proc_now = 'p' + str(_)
+    #     msg_q[proc_now].put("End of program.")
+    #     procs[proc_now].join()
 # main()
 
 if __name__ == "__main__":
