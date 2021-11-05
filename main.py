@@ -121,7 +121,7 @@ def get_key(pkt):
     return key + "s_addr None d_addr None s_port None d_port None protocol others"
 # get_key()
 
-def pkt2nparr(flow, ID):
+def pkt2nparr(flow):
     pkt_content = []
 
     for nth_pkt in range(min(len(flow), FIRST_N_PKTS)):
@@ -160,7 +160,7 @@ def pkt2nparr(flow, ID):
     return pkt2np
 # pkt2nparr()
 
-def classify_proc(msg_queue, lock, ID):
+def classify_proc(msg_queue, lock):
     if torch.cuda.is_available():
         device = "cuda"
         CUDA = True
@@ -178,7 +178,7 @@ def classify_proc(msg_queue, lock, ID):
 
         # t_start = time.process_time_ns()
         # -----------------------------------
-        dealt_flow = pkt2nparr(flow, ID)
+        dealt_flow = pkt2nparr(flow)
         # -----------------------------------
         # t_end = time.process_time_ns()
         # with open( "./dealt_flow_time_" + str(ID), "a" ) as f:
@@ -199,7 +199,7 @@ def classify_proc(msg_queue, lock, ID):
         output = PKT_CLASSIFIER(tensor2cuda)
         # -----------------------------------
         # t_end = time.process_time_ns()
-        # with open( "./classifier_time_" + str(ID), "a" ) as f:
+        # with open( "./classifier_time_" + str(0), "a" ) as f:
         #     f.write( str( t_end - t_start ) + '\n' )
 
         # t_start = time.process_time_ns()
@@ -207,7 +207,7 @@ def classify_proc(msg_queue, lock, ID):
         _, predicted = torch.max(output, 1)
         # -----------------------------------
         # t_end = time.process_time_ns()
-        # with open( "./predicted_time_" + str(ID), "a" ) as f:
+        # with open( "./predicted_time_" + str(0), "a" ) as f:
         #     f.write( str( t_end - t_start ) + '\n' )
         
         
@@ -239,7 +239,7 @@ def classify_proc(msg_queue, lock, ID):
         # -----------------------------------
         # t_end = time.process_time_ns()
 
-        # with open( "./log_time_" + str(ID), "a" ) as f:
+        # with open( "./log_time_" + str(0), "a" ) as f:
         #     f.write( str( t_end - t_start ) + '\n' )
 
         lock.release()
@@ -302,7 +302,7 @@ def main():
 
         msg_q[proc_now] = mp.Queue()
         procs[proc_now] = mp.Process(target=classify_proc
-                            , args=(msg_q[proc_now], Lock, _,), daemon=True)
+                            , args=(msg_q[proc_now], Lock,), daemon=False)
         procs[proc_now].start()
     # for loop
 
@@ -321,14 +321,14 @@ def main():
     recv_pkt_amt = 0
 
     while True:
-        # if recv_pkt_amt >= 100:
-        #     break
+        if recv_pkt_amt >= 100:
+            break
         
         packet = s.recvfrom( 65565 )
         pkt = packet[0]
         key = get_key(pkt)
 
-        # recv_pkt_amt += 1
+        recv_pkt_amt += 1
 
         if len( key ) != 0 and flows.get( key ) == None:
             flows[key] = [ pkt ]
@@ -347,11 +347,11 @@ def main():
         # elif
     # while True
 
-    # time.sleep( 1.5 )
-    # for _ in range(cpu_amt_sub1):
-    #     proc_now = 'p' + str(_)
-    #     msg_q[proc_now].put("End of program.")
-        # procs[proc_now].join()
+    time.sleep( 1.5 )
+    for _ in range(cpu_amt_sub1):
+        proc_now = 'p' + str(_)
+        msg_q[proc_now].put("End of program.")
+        procs[proc_now].join()
 # main()
 
 if __name__ == "__main__":
