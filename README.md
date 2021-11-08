@@ -3,7 +3,7 @@
 * [Platforms](#platforms)
 * [Dependencies](#Dependencies)
 * [Execution](#Execution)
-* [Execution flow](#Execution flow)
+* [Execution flow](#Execution-flow)
 ## Platforms
 You should be able to execute the program on the following platforms:
 * Ubuntu 20.04
