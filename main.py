@@ -11,6 +11,7 @@ from threading import Timer
 import multiprocessing as mp
 from pathlib import Path
 import json
+import math
 
 FIRST_N_PKTS = 8
 FIRST_N_BYTES = 80
@@ -26,6 +27,7 @@ class JsonFilter(logging.Filter):
     c = 'class'
     p = "procotol"
     num_pkts = 'num_pkts'
+    output = 'output'
 
     def filter( self, record ):
         record.s_addr = self.s_addr
@@ -35,6 +37,7 @@ class JsonFilter(logging.Filter):
         record.c = self.c
         record.p = self.p
         record.num_pkts = self.num_pkts
+        record.output = self.output
         return True
     # class JsonFilter
 
@@ -235,6 +238,7 @@ def classify_proc(msg_queue, lock):
             filter_.c = flow_types[predicted[0]]
             filter_.p = inf[9]
             filter_.num_pkts = len( flow )
+            filter_.output = math.exp( _.item() )
             logger.info( key )
         # -----------------------------------
         # t_end = time.process_time_ns()
@@ -281,7 +285,8 @@ def main():
                           "source port": "%(s_port)s",
                           "destination port": "%(d_port)s",
                           "class": "%(c)s",
-                          "number of packets": "%(num_pkts)s"
+                          "number of packets": "%(num_pkts)s",
+                          "value": "%(output)s"
     })
     logging.basicConfig(level=logging.INFO, filename="./log_file/" + log_filename, filemode='a',
                             format=formate,
