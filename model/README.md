@@ -18,3 +18,12 @@
 PowerShell.exe -ExecutionPolicy UnRestricted -File .runme.ps1
 ```
 [PowerShell usage ref.](https://www.netspi.com/blog/technical/network-penetration-testing/15-ways-to-bypass-the-powershell-execution-policy/)
+# dataset_preprocessing.py
+## 程式執行流程
+* 設定讀檔路徑(必須在有所有流量種類名稱的資料夾的目錄下) (line 12)
+* 計算擷取的flow的總數 (line 17~18)
+* set_data()函式會將傳入的flow的封包的byte值讀出，並將長度不足或封包數不夠的地方補0。最後再設置這個flow的target output value。 (line 31~58)
+* 遍歷所有資料夾，並呼叫前面定義的函式產生input data。(line 68~88)
+    * 設定讀取資料夾路徑 (line 71~72)
+    * 遍歷每個pcap檔案，並呼叫set_data()來讀取並產生每個檔案的input。
+* 將資料儲存。 (line 108, 110)
