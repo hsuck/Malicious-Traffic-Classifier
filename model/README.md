@@ -17,6 +17,7 @@
 ```
 PowerShell.exe -ExecutionPolicy UnRestricted -File .runme.ps1
 ```
+執行 Step2，並參考 split the PCAp file by each flow，將 pcap 依照 flow 來切割
 [PowerShell usage ref.](https://www.netspi.com/blog/technical/network-penetration-testing/15-ways-to-bypass-the-powershell-execution-policy/)
 # dataset_preprocessing.py
 ## 程式執行流程
