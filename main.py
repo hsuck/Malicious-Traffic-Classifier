@@ -207,6 +207,9 @@ def classify_proc(msg_queue, lock):
 
         # t_start = time.process_time_ns()
         # -----------------------------------
+        # _c = output.detach().to("cpu").numpy()
+        # print(f"_c: {np.exp(_c).sum()}")
+        # print(f"exp of c: {np.exp(_c)}")
         _, predicted = torch.max(output, 1)
         # -----------------------------------
         # t_end = time.process_time_ns()
@@ -337,18 +340,21 @@ def main():
 
         if len( key ) != 0 and flows.get( key ) == None:
             flows[key] = [ pkt ]
-            timers[key] = Timer(1.0, pass_pkt2proc, (key, flows[key], msg_q, cpu_amt_sub1))
+            timers[key] = Timer(5.0, pass_pkt2proc, (key, flows[key], msg_q, cpu_amt_sub1))
             timers[key].start()
         elif len( key ) != 0:
-            timers[key].cancel()
-
-            if len( flows[key] ) == 8:
+            if len( flows[key] ) < 7:
+                timers[key].cancel()
+                flows[key].append( pkt )
+                timers[key] = Timer( 5.0, pass_pkt2proc, (key, flows[key], msg_q, cpu_amt_sub1))
+                timers[key].start()
+            elif len( flows[key] ) == 7:
+                timers[key].cancel()
+                flows[key].append( pkt )
                 # do classification
                 pass_pkt2proc(key, flows[key], msg_q, cpu_amt_sub1)
             else:
-                flows[key].append( pkt )
-                timers[key] = Timer( 1.0, pass_pkt2proc, (key, flows[key], msg_q, cpu_amt_sub1))
-                timers[key].start()
+                continue
         # elif
     # while True
 

@@ -1,9 +1,5 @@
 from torch import nn
 
-# n_pkts = 8        # first n_pkts packets of the flow
-# n_bytes = 80      # first n_bytes of the packet
-# maltypes_amt = 10 # amount of the types of the malicious packets
-
 class CNN_RNN(nn.Module):
     def __init__(self):
         super(CNN_RNN, self).__init__()
@@ -33,6 +29,8 @@ class CNN_RNN(nn.Module):
         x_out, (h_n, c_n) = self.lstm5(x_in, None)
         x = x_out.contiguous().view(x_out.size()[0], -1)
         
-        out = self.layers2(x)
+        x_out = self.layers2(x)
+#         output = torch.sigmoid(x_out)
+        output = nn.functional.log_softmax(x_out, dim=1)
         
-        return out
+        return output
