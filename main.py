@@ -253,11 +253,14 @@ def classify_proc(msg_queue, lock):
     # for
 # classify_proc()
 
-def pass_pkt2proc(key, flow, msg_q, proc_create_amt):
-    pkt_dest = time.process_time_ns() % proc_create_amt
-    proc_now = 'p' + str(pkt_dest)
+def pass_pkt2proc(key, flow, msg_q, check_flg):
+    # pkt_dest = time.process_time_ns() % proc_create_amt
+    # proc_now = 'p' + str(pkt_dest)
+    proc_now = "p0"
     msg_q[proc_now].put([flow.copy(), key])
+    check_flg[key] = 1
     flow.clear()
+
 # generate_proc()
 
 def main():
@@ -289,7 +292,7 @@ def main():
                           "destination port": "%(d_port)s",
                           "class": "%(c)s",
                           "number of packets": "%(num_pkts)s",
-                          "value": "%(output)s"
+                          "value": "%(output).2f"
     })
     logging.basicConfig(level=logging.INFO, filename="./log_file/" + log_filename, filemode='a',
                             format=formate,
@@ -299,19 +302,20 @@ def main():
     # if cpu_amt_sub1 < 1:
     #     cpu_amt_sub1 = 1
 
-    cpu_amt_sub1 = 1
+    # cpu_amt_sub1 = 1
     # print(f"cpu_amt_sub1: {cpu_amt_sub1}")
 
     # create the processes to classifiy the packets
     procs = {}
     msg_q = {}
-    for _ in range(cpu_amt_sub1):
-        proc_now = 'p' + str(_)
+    # for _ in range(cpu_amt_sub1):
+        # proc_now = 'p' + str(_)
+    proc_now = "p0"
 
-        msg_q[proc_now] = mp.Queue()
-        procs[proc_now] = mp.Process(target=classify_proc
-                            , args=(msg_q[proc_now], Lock,), daemon=False)
-        procs[proc_now].start()
+    msg_q[proc_now] = mp.Queue()
+    procs[proc_now] = mp.Process(target=classify_proc
+                        , args=(msg_q[proc_now], Lock,), daemon=False)
+    procs[proc_now].start()
     # for loop
 
     # def signal_handler(signum, frame):
@@ -326,6 +330,7 @@ def main():
 
     flows = {}
     timers = {}
+    checked_flg = {}
     # recv_pkt_amt = 0
 
     while True:
@@ -338,24 +343,28 @@ def main():
 
         # recv_pkt_amt += 1
 
-        if len( key ) != 0 and flows.get( key ) == None:
-            flows[key] = [ pkt ]
-            timers[key] = Timer(5.0, pass_pkt2proc, (key, flows[key], msg_q, cpu_amt_sub1))
-            timers[key].start()
-        elif len( key ) != 0:
-            if len( flows[key] ) < 7:
+        if len( key ) != 0:
+            # skip if the flow had been checked
+            if checked_flg.get(key, 0) == 1:
+                continue
+
+            if flows.get( key ) == None:
+                flows[key] = [ pkt ]
+                timers[key] = Timer(5.0, pass_pkt2proc, (key, flows[key], msg_q, checked_flg))
+                timers[key].start()
+            elif len( flows[key] ) < 7:
                 timers[key].cancel()
                 flows[key].append( pkt )
-                timers[key] = Timer( 5.0, pass_pkt2proc, (key, flows[key], msg_q, cpu_amt_sub1))
+                timers[key] = Timer(5.0, pass_pkt2proc, (key, flows[key], msg_q, checked_flg))
                 timers[key].start()
             elif len( flows[key] ) == 7:
                 timers[key].cancel()
                 flows[key].append( pkt )
                 # do classification
-                pass_pkt2proc(key, flows[key], msg_q, cpu_amt_sub1)
+                pass_pkt2proc(key, flows[key], msg_q, checked_flg)
             else:
                 continue
-        # elif
+        # if
     # while True
 
     # time.sleep( 1.5 )
